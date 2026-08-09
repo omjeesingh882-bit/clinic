@@ -1,25 +1,66 @@
 import { createWorker } from 'tesseract.js';
 import { preprocessImageHighContrast } from './preprocess';
+import path from 'path';
+import fs from 'fs';
+import os from 'os';
 
 let cachedWorker: any = null;
-let isWorkerInitializing = false;
+
+function findTrainedDataDir(): string | null {
+  try {
+    const cwd = process.cwd();
+    const candidates = [
+      path.join(cwd, 'public', 'tessdata'),
+      path.join(cwd, 'public'),
+      cwd,
+      path.join(__dirname, '..', '..', '..', 'public', 'tessdata'),
+      path.join(__dirname, '..', '..', '..', 'public'),
+      path.join(__dirname, '..', '..', '..'),
+    ];
+
+    for (const dir of candidates) {
+      if (fs.existsSync(path.join(dir, 'eng.traineddata'))) {
+        return dir;
+      }
+    }
+  } catch (err) {
+    console.warn("Error scanning for traineddata dir:", err);
+  }
+  return null;
+}
 
 async function getOrInitWorker() {
   if (cachedWorker) {
     return cachedWorker;
   }
 
-  const cwd = process.cwd();
+  const tmpDir = os.tmpdir();
+  const trainedDataDir = findTrainedDataDir();
+
+  if (trainedDataDir) {
+    try {
+      const worker = await createWorker('eng', 1, {
+        langPath: trainedDataDir,
+        cachePath: tmpDir,
+        gzip: false,
+        logger: () => {},
+      });
+      cachedWorker = worker;
+      return cachedWorker;
+    } catch (localErr) {
+      console.warn("Local worker initialization failed, falling back to standard createWorker:", localErr);
+    }
+  }
+
   try {
     const worker = await createWorker('eng', 1, {
-      langPath: cwd,
-      gzip: false,
+      cachePath: tmpDir,
       logger: () => {},
     });
     cachedWorker = worker;
     return cachedWorker;
-  } catch (localErr) {
-    console.warn("Local worker initialization fallback to remote/standard worker:", localErr);
+  } catch (err) {
+    console.warn("Fallback to basic createWorker:", err);
     const worker = await createWorker('eng');
     cachedWorker = worker;
     return cachedWorker;

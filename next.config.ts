@@ -7,6 +7,13 @@ const nextConfig: NextConfig = {
       bodySizeLimit: '15mb',
     },
   },
+  outputFileTracingIncludes: {
+    '/**': [
+      './eng.traineddata',
+      './public/eng.traineddata',
+      './public/tessdata/**/*',
+    ],
+  },
   images: {
     remotePatterns: [],
   },
