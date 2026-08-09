@@ -29,7 +29,7 @@ export async function processImage(base64Image: string) {
 
     let ocrResult;
     try {
-      ocrResult = await performOCR(preprocessedImage);
+      ocrResult = await performOCR(preprocessedImage, imageBuffer);
     } catch (e) {
       ocrResult = { text: 'OCR extraction could not detect text', confidence: 40 };
     }

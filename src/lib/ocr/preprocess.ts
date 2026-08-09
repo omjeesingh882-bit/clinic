@@ -17,12 +17,28 @@ export async function preprocessImage(imageBuffer: Buffer): Promise<Buffer> {
     return await pipeline
       .grayscale()
       .normalize()
-      .sharpen()
+      .sharpen({ sigma: 1.2 })
       .modulate({ brightness: 1.05, saturation: 1.0 })
       .png({ compressionLevel: 6 })
       .toBuffer();
   } catch (error) {
     console.warn("Preprocessing fallback to original buffer:", error);
+    return imageBuffer;
+  }
+}
+
+export async function preprocessImageHighContrast(imageBuffer: Buffer): Promise<Buffer> {
+  try {
+    return await sharp(imageBuffer)
+      .rotate()
+      .resize({ width: 2200, withoutEnlargement: true })
+      .grayscale()
+      .linear(1.4, -20) // Boost contrast
+      .sharpen()
+      .png({ compressionLevel: 6 })
+      .toBuffer();
+  } catch (error) {
+    console.warn("High-contrast preprocessing fallback:", error);
     return imageBuffer;
   }
 }
