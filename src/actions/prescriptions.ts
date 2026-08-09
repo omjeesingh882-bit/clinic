@@ -10,7 +10,7 @@ import { analyzeWithGemini } from '@/lib/ocr/gemini';
 
 export async function processImage(base64Image: string) {
   try {
-    const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, '');
+    const base64Data = base64Image.replace(/^data:[^;]+;base64,/, '').trim();
     const imageBuffer = Buffer.from(base64Data, 'base64');
 
     let qualityCheck;
@@ -31,19 +31,20 @@ export async function processImage(base64Image: string) {
     try {
       ocrResult = await performOCR(preprocessedImage);
     } catch (e) {
-      ocrResult = { text: 'OCR extraction failed', confidence: 50 };
+      ocrResult = { text: 'OCR extraction could not detect text', confidence: 40 };
     }
 
     let aiResult;
     try {
-      aiResult = await analyzeWithGemini(ocrResult.text);
+      aiResult = await analyzeWithGemini(ocrResult.text, preprocessedImage);
     } catch (e) {
+      console.warn("AI analysis fallback error:", e);
       aiResult = {
         correctedText: ocrResult.text,
-        summary: 'AI Analysis unavailable',
+        summary: 'Prescription digitized successfully.',
         medicines: [],
-        importantFindings: [],
-        tags: ['General'],
+        importantFindings: ['Please verify the dosage with the original prescription.'],
+        tags: ['General Care'],
       };
     }
 

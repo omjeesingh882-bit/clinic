@@ -54,19 +54,26 @@ export default function UploadPage({
   const handleImageSelected = async (base64String: string) => {
     setImageData(base64String);
     setStatus("preprocessing");
+    setErrorMsg("");
     
     try {
+      // Allow UI to render preprocessing state
+      await new Promise(r => setTimeout(r, 400));
       setStatus("ocr");
+
       const processed = await processImage(base64String);
-      setStatus("ai");
       
+      setStatus("ai");
+      await new Promise(r => setTimeout(r, 400));
+
       setResults(processed);
       setStatus("complete");
+      toast.success("Prescription processed successfully!");
     } catch (err: any) {
-      console.error(err);
+      console.error("Upload error:", err);
       setStatus("error");
-      setErrorMsg(err?.message || "Failed to process image. Please try again.");
-      toast.error("Processing failed");
+      setErrorMsg(err?.message || "Failed to process image. Please ensure the image is clear and try again.");
+      toast.error("Processing failed. Please try again.");
     }
   };
 

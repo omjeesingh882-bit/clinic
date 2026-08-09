@@ -28,31 +28,82 @@ export function ImageUploader({ onImageSelected }: ImageUploaderProps) {
     setIsDragging(false);
   }, []);
 
-  const processFile = (file: File) => {
-    const validTypes = ["image/jpeg", "image/jpg", "image/png", "application/pdf"];
+  const compressAndReadImage = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      // If PDF, read directly
+      if (file.type === "application/pdf") {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const rawDataUrl = e.target?.result as string;
+        const img = new Image();
+        img.onload = () => {
+          const maxDimension = 2200;
+          let { width, height } = img;
+
+          if (width > maxDimension || height > maxDimension) {
+            if (width > height) {
+              height = Math.round((height * maxDimension) / width);
+              width = maxDimension;
+            } else {
+              width = Math.round((width * maxDimension) / height);
+              height = maxDimension;
+            }
+          }
+
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) {
+            resolve(rawDataUrl);
+            return;
+          }
+
+          ctx.drawImage(img, 0, 0, width, height);
+          const compressedDataUrl = canvas.toDataURL("image/jpeg", 0.92);
+          resolve(compressedDataUrl);
+        };
+        img.onerror = () => resolve(rawDataUrl);
+        img.src = rawDataUrl;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const processFile = async (file: File) => {
+    const validTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp", "application/pdf"];
     if (!validTypes.includes(file.type)) {
-      toast.error("Invalid file type. Please upload a JPG, PNG, or PDF file.");
+      toast.error("Invalid file type. Please upload a JPG, PNG, WEBP, or PDF file.");
       return;
     }
 
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error("File is too large. Maximum size is 10MB.");
+    if (file.size > 15 * 1024 * 1024) {
+      toast.error("File is too large. Maximum size is 15MB.");
       return;
     }
 
     setFileInfo({ name: file.name, size: file.size, type: file.type });
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      const base64String = reader.result as string;
+    try {
+      const base64String = await compressAndReadImage(file);
       if (file.type.startsWith("image/")) {
         setPreviewUrl(base64String);
       } else {
-        setPreviewUrl(null); // PDF preview handling if needed
+        setPreviewUrl(null);
       }
       onImageSelected(base64String);
-    };
-    reader.readAsDataURL(file);
+    } catch (err) {
+      console.error("Error reading file:", err);
+      toast.error("Failed to read image file.");
+    }
   };
 
   const handleDrop = useCallback((e: React.DragEvent) => {
@@ -156,7 +207,7 @@ export function ImageUploader({ onImageSelected }: ImageUploaderProps) {
         type="file"
         ref={fileInputRef}
         onChange={handleFileSelect}
-        accept=".jpg,.jpeg,.png,.pdf"
+        accept=".jpg,.jpeg,.png,.webp,.pdf"
         className="hidden"
       />
       <div className="w-16 h-16 mb-4 rounded-full bg-blue-100/50 text-blue-600 flex items-center justify-center group-hover:scale-110 transition-transform">
@@ -164,8 +215,8 @@ export function ImageUploader({ onImageSelected }: ImageUploaderProps) {
       </div>
       <h3 className="text-lg font-semibold text-slate-800 mb-2">Drag & drop or click to upload</h3>
       <p className="text-slate-500 text-sm max-w-sm mb-6">
-        Upload a high-quality image or PDF of the medical prescription. 
-        Supported formats: JPG, PNG, PDF (Max 10MB).
+        Upload a high-quality photo or scan of the medical prescription. 
+        Supported formats: JPG, PNG, WEBP, PDF (Max 15MB).
       </p>
       <Button type="button" className="pointer-events-none">
         Select File
