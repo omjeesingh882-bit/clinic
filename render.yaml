@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: clinic-ocr
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: cp -r public .next/standalone/ && cp -r .next/static .next/standalone/.next/static && cp eng.traineddata .next/standalone/ && node .next/standalone/server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "3000"
+      - key: DATABASE_URL
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false

@@ -10,12 +10,16 @@ function findTrainedDataDir(): string | null {
   try {
     const cwd = process.cwd();
     const candidates = [
+      cwd,
       path.join(cwd, 'public', 'tessdata'),
       path.join(cwd, 'public'),
-      cwd,
+      path.join(cwd, '.next', 'standalone'),
+      path.join(cwd, '.next', 'standalone', 'public', 'tessdata'),
+      path.join(cwd, '.next', 'standalone', 'public'),
       path.join(__dirname, '..', '..', '..', 'public', 'tessdata'),
       path.join(__dirname, '..', '..', '..', 'public'),
       path.join(__dirname, '..', '..', '..'),
+      path.join(__dirname),
     ];
 
     for (const dir of candidates) {
