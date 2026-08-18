@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Users, Upload, Search, Stethoscope, LogOut } from "lucide-react";
+import { LayoutDashboard, Users, Upload, Search, Stethoscope, LogOut, HeartHandshake } from "lucide-react";
 import { logoutAction } from "@/actions/auth";
 
 interface SidebarProps {
@@ -18,6 +18,7 @@ export function Sidebar({ doctorName, doctorEmail }: SidebarProps) {
     { name: "Patients", href: "/patients", icon: Users },
     { name: "Upload Prescription", href: "/upload", icon: Upload },
     { name: "Search", href: "/search", icon: Search },
+    { name: "Parent Portal", href: "/portal", icon: HeartHandshake },
   ];
 
   return (

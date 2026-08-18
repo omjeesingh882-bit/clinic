@@ -112,13 +112,30 @@ export default function LoginPage() {
         </button>
       </form>
 
-      <div className="mt-8 text-center">
+      <div className="mt-8 text-center space-y-4">
         <p className="text-sm text-gray-600">
           Don't have an account?{' '}
           <Link href="/signup" className="text-blue-600 hover:text-blue-700 font-medium">
             Create one
           </Link>
         </p>
+
+        <div className="pt-4 border-t border-gray-100">
+          <div className="rounded-xl bg-blue-50/80 border border-blue-100 p-4 text-center space-y-2">
+            <p className="text-xs font-semibold text-blue-900 uppercase tracking-wide">
+              Are you a Parent or Patient?
+            </p>
+            <p className="text-xs text-blue-700">
+              Access your medical reports, medicines & prescriptions directly without an account.
+            </p>
+            <Link
+              href="/portal"
+              className="inline-flex items-center justify-center w-full py-2 px-3 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition-colors mt-1"
+            >
+              Open Parent & Patient Portal →
+            </Link>
+          </div>
+        </div>
       </div>
     </div>
   );
