@@ -68,8 +68,6 @@ export async function getSession() {
       .limit(1);
 
     if (result.length === 0) {
-      // Session expired or invalid — clear cookie
-      cookieStore.delete(SESSION_COOKIE_NAME);
       return null;
     }
 
