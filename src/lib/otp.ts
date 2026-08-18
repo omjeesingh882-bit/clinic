@@ -62,13 +62,17 @@ export async function createAndSendOTP(
 
     if (error) {
       console.error('Error sending OTP email:', error);
-      return { success: false, error: 'Failed to send verification email. Please try again.' };
+      const isTestRestriction = error.message?.includes('You can only send testing emails to your own email address');
+      const errorMessage = isTestRestriction
+        ? `Testing Mode: Emails can currently only be sent to the registered Resend email (omjeesingh882@gmail.com). To send to any email, verify a custom domain at resend.com/domains.`
+        : (error.message || 'Failed to send verification email. Please try again.');
+      return { success: false, error: errorMessage };
     }
 
     return { success: true };
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error creating OTP:', error);
-    return { success: false, error: 'Failed to send verification code. Please try again.' };
+    return { success: false, error: error?.message || 'Failed to send verification code. Please try again.' };
   }
 }
 
