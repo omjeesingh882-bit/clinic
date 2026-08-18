@@ -1,5 +1,3 @@
-'use server';
-
 import { db } from '@/db';
 import { otpCodes } from '@/db/schema';
 import { and, eq, gt, desc } from 'drizzle-orm';

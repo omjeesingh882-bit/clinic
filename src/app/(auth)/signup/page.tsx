@@ -36,8 +36,9 @@ export default function SignupPage() {
       } else {
         setError(result.error || 'Failed to send code.');
       }
-    } catch (err) {
-      setError('An unexpected error occurred.');
+    } catch (err: any) {
+      console.error('Send OTP error:', err);
+      setError(err?.message || 'An unexpected error occurred. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -56,8 +57,9 @@ export default function SignupPage() {
       } else {
         setError(result.error || 'Invalid verification code.');
       }
-    } catch (err) {
-      setError('An unexpected error occurred.');
+    } catch (err: any) {
+      console.error('Verify OTP error:', err);
+      setError(err?.message || 'An unexpected error occurred. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -81,8 +83,9 @@ export default function SignupPage() {
       } else {
         setError(result.error || 'Failed to create account.');
       }
-    } catch (err) {
-      setError('An unexpected error occurred.');
+    } catch (err: any) {
+      console.error('Complete signup error:', err);
+      setError(err?.message || 'An unexpected error occurred. Please try again.');
     } finally {
       setIsLoading(false);
     }

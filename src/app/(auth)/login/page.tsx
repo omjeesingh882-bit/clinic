@@ -28,8 +28,9 @@ export default function LoginPage() {
       } else {
         setError(result.error || 'Login failed. Please try again.');
       }
-    } catch (err) {
-      setError('An unexpected error occurred. Please try again.');
+    } catch (err: any) {
+      console.error('Login error:', err);
+      setError(err?.message || 'An unexpected error occurred. Please try again.');
     } finally {
       setIsLoading(false);
     }

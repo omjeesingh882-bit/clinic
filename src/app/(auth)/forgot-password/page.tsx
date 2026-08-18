@@ -34,8 +34,9 @@ export default function ForgotPasswordPage() {
       } else {
         setError(result.error || 'Failed to send reset code.');
       }
-    } catch (err) {
-      setError('An unexpected error occurred.');
+    } catch (err: any) {
+      console.error('Send reset OTP error:', err);
+      setError(err?.message || 'An unexpected error occurred. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -54,8 +55,9 @@ export default function ForgotPasswordPage() {
       } else {
         setError(result.error || 'Invalid reset code.');
       }
-    } catch (err) {
-      setError('An unexpected error occurred.');
+    } catch (err: any) {
+      console.error('Verify reset OTP error:', err);
+      setError(err?.message || 'An unexpected error occurred. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -79,8 +81,9 @@ export default function ForgotPasswordPage() {
       } else {
         setError(result.error || 'Failed to reset password.');
       }
-    } catch (err) {
-      setError('An unexpected error occurred.');
+    } catch (err: any) {
+      console.error('Reset password error:', err);
+      setError(err?.message || 'An unexpected error occurred. Please try again.');
     } finally {
       setIsLoading(false);
     }

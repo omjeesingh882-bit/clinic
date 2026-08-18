@@ -1,5 +1,3 @@
-'use server';
-
 import { db } from '@/db';
 import { doctors, sessions } from '@/db/schema';
 import { eq, and, gt } from 'drizzle-orm';
