@@ -2,17 +2,36 @@
 
 import { db } from '@/db';
 import { patients, prescriptions } from '@/db/schema';
-import { desc, count, sql, eq } from 'drizzle-orm';
+import { desc, count, sql, eq, and, inArray } from 'drizzle-orm';
+import { requireAuth } from '@/lib/auth';
 
 export async function getDashboardStats() {
+  const session = await requireAuth();
+
   try {
-    const [patientCount] = await db
-      .select({ count: count() })
-      .from(patients);
+    // Get this doctor's patient IDs
+    const doctorPatients = await db
+      .select({ id: patients.id })
+      .from(patients)
+      .where(eq(patients.doctorId, session.doctorId));
+
+    const patientIds = doctorPatients.map((p) => p.id);
+
+    const totalPatients = patientIds.length;
+
+    if (totalPatients === 0) {
+      return {
+        totalPatients: 0,
+        totalPrescriptions: 0,
+        thisMonth: 0,
+        recentPrescriptions: [],
+      };
+    }
 
     const [prescriptionCount] = await db
       .select({ count: count() })
-      .from(prescriptions);
+      .from(prescriptions)
+      .where(inArray(prescriptions.patientId, patientIds));
 
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -20,7 +39,12 @@ export async function getDashboardStats() {
     const [thisMonthResult] = await db
       .select({ count: count() })
       .from(prescriptions)
-      .where(sql`${prescriptions.createdAt} >= ${startOfMonth}`);
+      .where(
+        and(
+          inArray(prescriptions.patientId, patientIds),
+          sql`${prescriptions.createdAt} >= ${startOfMonth}`
+        )
+      );
 
     const recentPrescriptions = await db
       .select({
@@ -33,12 +57,13 @@ export async function getDashboardStats() {
         tags: prescriptions.tags,
       })
       .from(prescriptions)
-      .leftJoin(patients, eq(prescriptions.patientId, patients.id))
+      .innerJoin(patients, eq(prescriptions.patientId, patients.id))
+      .where(inArray(prescriptions.patientId, patientIds))
       .orderBy(desc(prescriptions.createdAt))
       .limit(5);
 
     return {
-      totalPatients: Number(patientCount?.count || 0),
+      totalPatients,
       totalPrescriptions: Number(prescriptionCount?.count || 0),
       thisMonth: Number(thisMonthResult?.count || 0),
       recentPrescriptions: (recentPrescriptions || []).map((r) => ({
@@ -61,4 +86,3 @@ export async function getDashboardStats() {
     };
   }
 }
-

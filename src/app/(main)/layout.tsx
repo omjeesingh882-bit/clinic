@@ -1,10 +1,20 @@
 import React from "react";
+import { requireAuth } from "@/lib/auth";
 import { AppShell } from "@/components/layout/app-shell";
 
-export default function MainLayout({
+export default async function MainLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  return <AppShell>{children}</AppShell>;
+  const session = await requireAuth();
+
+  return (
+    <AppShell
+      doctorName={session.doctorName}
+      doctorEmail={session.doctorEmail}
+    >
+      {children}
+    </AppShell>
+  );
 }

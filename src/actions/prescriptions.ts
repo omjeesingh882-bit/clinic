@@ -2,11 +2,12 @@
 
 import { db } from '@/db';
 import { prescriptions, patients } from '@/db/schema';
-import { eq, desc, ilike, or } from 'drizzle-orm';
+import { eq, desc, ilike, or, and, inArray } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 import { preprocessImage, checkImageQuality } from '@/lib/ocr/preprocess';
 import { performOCR } from '@/lib/ocr/tesseract';
 import { analyzeWithGemini } from '@/lib/ocr/gemini';
+import { requireAuth } from '@/lib/auth';
 
 export async function processImage(base64Image: string) {
   try {
@@ -73,7 +74,20 @@ export async function savePrescription(data: {
   important?: boolean;
   ocrConfidence?: number;
 }) {
+  const session = await requireAuth();
+
   try {
+    // Verify the patient belongs to this doctor
+    const patient = await db
+      .select({ id: patients.id })
+      .from(patients)
+      .where(and(eq(patients.id, data.patientId), eq(patients.doctorId, session.doctorId)))
+      .limit(1);
+
+    if (patient.length === 0) {
+      throw new Error('Patient not found or access denied');
+    }
+
     const result = await db
       .insert(prescriptions)
       .values({
@@ -104,7 +118,20 @@ export async function savePrescription(data: {
 }
 
 export async function getPrescriptionsByPatient(patientId: string) {
+  const session = await requireAuth();
+
   try {
+    // Verify patient belongs to this doctor
+    const patient = await db
+      .select({ id: patients.id })
+      .from(patients)
+      .where(and(eq(patients.id, patientId), eq(patients.doctorId, session.doctorId)))
+      .limit(1);
+
+    if (patient.length === 0) {
+      return [];
+    }
+
     const rows = await db
       .select()
       .from(prescriptions)
@@ -143,6 +170,8 @@ export async function getPrescriptionsByPatient(patientId: string) {
 }
 
 export async function getPrescriptionById(id: string) {
+  const session = await requireAuth();
+
   try {
     const result = await db
       .select({
@@ -150,8 +179,13 @@ export async function getPrescriptionById(id: string) {
         patient: patients,
       })
       .from(prescriptions)
-      .leftJoin(patients, eq(prescriptions.patientId, patients.id))
-      .where(eq(prescriptions.id, id))
+      .innerJoin(patients, eq(prescriptions.patientId, patients.id))
+      .where(
+        and(
+          eq(prescriptions.id, id),
+          eq(patients.doctorId, session.doctorId)
+        )
+      )
       .limit(1);
 
     if (result.length === 0) {
@@ -211,7 +245,26 @@ export async function updatePrescription(
     important?: boolean;
   }
 ) {
+  const session = await requireAuth();
+
   try {
+    // Verify prescription belongs to this doctor's patient
+    const existing = await db
+      .select({ patientId: prescriptions.patientId })
+      .from(prescriptions)
+      .innerJoin(patients, eq(prescriptions.patientId, patients.id))
+      .where(
+        and(
+          eq(prescriptions.id, id),
+          eq(patients.doctorId, session.doctorId)
+        )
+      )
+      .limit(1);
+
+    if (existing.length === 0) {
+      throw new Error('Prescription not found or access denied');
+    }
+
     const result = await db
       .update(prescriptions)
       .set(data)
@@ -234,7 +287,26 @@ export async function updatePrescription(
 }
 
 export async function deletePrescription(id: string) {
+  const session = await requireAuth();
+
   try {
+    // Verify prescription belongs to this doctor's patient
+    const existing = await db
+      .select({ patientId: prescriptions.patientId })
+      .from(prescriptions)
+      .innerJoin(patients, eq(prescriptions.patientId, patients.id))
+      .where(
+        and(
+          eq(prescriptions.id, id),
+          eq(patients.doctorId, session.doctorId)
+        )
+      )
+      .limit(1);
+
+    if (existing.length === 0) {
+      throw new Error('Prescription not found or access denied');
+    }
+
     const result = await db.delete(prescriptions).where(eq(prescriptions.id, id)).returning();
 
     if (result.length > 0) {
@@ -252,11 +324,23 @@ export async function deletePrescription(id: string) {
 }
 
 export async function toggleImportant(id: string, isImportant?: boolean) {
+  const session = await requireAuth();
+
   try {
+    // Verify prescription belongs to this doctor's patient
     const current = await db
-      .select({ important: prescriptions.important, patientId: prescriptions.patientId })
+      .select({
+        important: prescriptions.important,
+        patientId: prescriptions.patientId,
+      })
       .from(prescriptions)
-      .where(eq(prescriptions.id, id))
+      .innerJoin(patients, eq(prescriptions.patientId, patients.id))
+      .where(
+        and(
+          eq(prescriptions.id, id),
+          eq(patients.doctorId, session.doctorId)
+        )
+      )
       .limit(1);
 
     if (current.length === 0) throw new Error('Prescription not found');
@@ -282,9 +366,21 @@ export async function toggleImportant(id: string, isImportant?: boolean) {
 }
 
 export async function searchPrescriptions(query: string) {
+  const session = await requireAuth();
+
   try {
     if (!query || !query.trim()) return [];
     const trimmed = query.trim();
+
+    // Get this doctor's patient IDs
+    const doctorPatients = await db
+      .select({ id: patients.id })
+      .from(patients)
+      .where(eq(patients.doctorId, session.doctorId));
+
+    const patientIds = doctorPatients.map((p) => p.id);
+
+    if (patientIds.length === 0) return [];
 
     const rows = await db
       .select({
@@ -292,14 +388,17 @@ export async function searchPrescriptions(query: string) {
         patient: patients,
       })
       .from(prescriptions)
-      .leftJoin(patients, eq(prescriptions.patientId, patients.id))
+      .innerJoin(patients, eq(prescriptions.patientId, patients.id))
       .where(
-        or(
-          ilike(prescriptions.correctedText, `%${trimmed}%`),
-          ilike(prescriptions.aiSummary, `%${trimmed}%`),
-          ilike(prescriptions.doctorNotes, `%${trimmed}%`),
-          ilike(patients.name, `%${trimmed}%`),
-          ilike(patients.phone, `%${trimmed}%`)
+        and(
+          inArray(prescriptions.patientId, patientIds),
+          or(
+            ilike(prescriptions.correctedText, `%${trimmed}%`),
+            ilike(prescriptions.aiSummary, `%${trimmed}%`),
+            ilike(prescriptions.doctorNotes, `%${trimmed}%`),
+            ilike(patients.name, `%${trimmed}%`),
+            ilike(patients.phone, `%${trimmed}%`)
+          )
         )
       )
       .orderBy(desc(prescriptions.createdAt));
@@ -333,4 +432,3 @@ export async function searchPrescriptions(query: string) {
     return [];
   }
 }
-

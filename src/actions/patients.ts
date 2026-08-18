@@ -2,12 +2,17 @@
 
 import { db } from '@/db';
 import { patients, prescriptions } from '@/db/schema';
-import { eq, desc, ilike, or, count } from 'drizzle-orm';
+import { eq, desc, ilike, or, count, and } from 'drizzle-orm';
 import { patientSchema } from '@/lib/validations';
 import { revalidatePath } from 'next/cache';
+import { requireAuth } from '@/lib/auth';
 
 export async function getPatients(search?: string) {
+  const session = await requireAuth();
+
   try {
+    let baseWhere = eq(patients.doctorId, session.doctorId);
+
     let query = db
       .select({
         id: patients.id,
@@ -20,18 +25,19 @@ export async function getPatients(search?: string) {
       })
       .from(patients)
       .leftJoin(prescriptions, eq(patients.id, prescriptions.patientId))
+      .where(
+        search && search.trim()
+          ? and(
+              baseWhere,
+              or(
+                ilike(patients.name, `%${search.trim()}%`),
+                ilike(patients.phone, `%${search.trim()}%`)
+              )
+            )
+          : baseWhere
+      )
       .groupBy(patients.id)
       .orderBy(desc(patients.createdAt));
-
-    if (search && search.trim()) {
-      const searchTerm = search.trim();
-      query = query.where(
-        or(
-          ilike(patients.name, `%${searchTerm}%`),
-          ilike(patients.phone, `%${searchTerm}%`)
-        )
-      ) as any;
-    }
 
     const results = await query;
     return results.map((p) => ({
@@ -45,11 +51,13 @@ export async function getPatients(search?: string) {
 }
 
 export async function getPatientById(id: string) {
+  const session = await requireAuth();
+
   try {
     const result = await db
       .select()
       .from(patients)
-      .where(eq(patients.id, id))
+      .where(and(eq(patients.id, id), eq(patients.doctorId, session.doctorId)))
       .limit(1);
 
     if (result.length === 0) {
@@ -64,6 +72,8 @@ export async function getPatientById(id: string) {
 }
 
 export async function createPatient(formData: FormData) {
+  const session = await requireAuth();
+
   try {
     const rawAge = formData.get('age');
     const data = {
@@ -78,6 +88,7 @@ export async function createPatient(formData: FormData) {
     const result = await db
       .insert(patients)
       .values({
+        doctorId: session.doctorId,
         name: validatedData.name,
         age: validatedData.age,
         gender: validatedData.gender,
@@ -100,6 +111,8 @@ export async function updatePatient(
   idOrFormData: string | FormData,
   maybeFormData?: FormData
 ) {
+  const session = await requireAuth();
+
   try {
     let id: string;
     let formData: FormData;
@@ -114,6 +127,17 @@ export async function updatePatient(
 
     if (!id) {
       throw new Error('Patient ID is required for update');
+    }
+
+    // Verify patient belongs to this doctor
+    const existing = await db
+      .select({ id: patients.id })
+      .from(patients)
+      .where(and(eq(patients.id, id), eq(patients.doctorId, session.doctorId)))
+      .limit(1);
+
+    if (existing.length === 0) {
+      throw new Error('Patient not found');
     }
 
     const rawAge = formData.get('age');
@@ -149,9 +173,22 @@ export async function updatePatient(
 }
 
 export async function deletePatient(idOrFormData: string | FormData) {
+  const session = await requireAuth();
+
   try {
     const id = typeof idOrFormData === 'string' ? idOrFormData : (idOrFormData.get('id') as string);
     if (!id) throw new Error('Patient ID is required');
+
+    // Verify patient belongs to this doctor
+    const existing = await db
+      .select({ id: patients.id })
+      .from(patients)
+      .where(and(eq(patients.id, id), eq(patients.doctorId, session.doctorId)))
+      .limit(1);
+
+    if (existing.length === 0) {
+      throw new Error('Patient not found');
+    }
 
     await db.delete(patients).where(eq(patients.id, id));
 
@@ -164,4 +201,3 @@ export async function deletePatient(idOrFormData: string | FormData) {
     throw new Error('Failed to delete patient');
   }
 }
-
