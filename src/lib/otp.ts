@@ -1,14 +1,77 @@
 import { db } from '@/db';
 import { otpCodes } from '@/db/schema';
 import { and, eq, gt, desc } from 'drizzle-orm';
+import nodemailer from 'nodemailer';
 import { Resend } from 'resend';
-
-const resend = new Resend(process.env.RESEND_API_KEY);
 
 // ─── OTP Generation ─────────────────────────────────────────────────────────
 
 function generateOTP(): string {
   return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
+// ─── Email Sender (Gmail SMTP with Resend Fallback) ──────────────────────────
+
+async function sendEmail({
+  to,
+  subject,
+  html,
+}: {
+  to: string;
+  subject: string;
+  html: string;
+}): Promise<{ success: boolean; error?: string }> {
+  const smtpUser = process.env.SMTP_USER || 'omjeesingh882@gmail.com';
+  const smtpPass = process.env.SMTP_PASS;
+
+  if (smtpUser && smtpPass) {
+    try {
+      const transporter = nodemailer.createTransport({
+        service: 'gmail',
+        auth: {
+          user: smtpUser,
+          pass: smtpPass.replace(/\s+/g, ''),
+        },
+      });
+
+      await transporter.sendMail({
+        from: `"ClinicOCR" <${smtpUser}>`,
+        to,
+        subject,
+        html,
+      });
+
+      return { success: true };
+    } catch (err: any) {
+      console.error('SMTP sendMail error:', err);
+      return { success: false, error: err?.message || 'Failed to send verification email.' };
+    }
+  }
+
+  // Fallback to Resend API if SMTP not configured
+  if (process.env.RESEND_API_KEY) {
+    try {
+      const resend = new Resend(process.env.RESEND_API_KEY);
+      const { error } = await resend.emails.send({
+        from: 'ClinicOCR <onboarding@resend.dev>',
+        to,
+        subject,
+        html,
+      });
+
+      if (error) {
+        console.error('Resend error:', error);
+        return { success: false, error: error.message || 'Failed to send email via Resend.' };
+      }
+
+      return { success: true };
+    } catch (err: any) {
+      console.error('Resend fallback error:', err);
+      return { success: false, error: err?.message || 'Failed to send email.' };
+    }
+  }
+
+  return { success: false, error: 'Email service is not configured.' };
 }
 
 // ─── Create & Send OTP ──────────────────────────────────────────────────────
@@ -36,7 +99,7 @@ export async function createAndSendOTP(
       : 'ClinicOCR - Password Reset Code';
 
     const body = type === 'signup'
-      ? `<div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px;">
+      ? `<div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px; background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0;">
            <h2 style="color: #0f172a; margin-bottom: 8px;">Welcome to ClinicOCR</h2>
            <p style="color: #64748b; margin-bottom: 24px;">Use the verification code below to complete your account setup:</p>
            <div style="background: #f1f5f9; border-radius: 12px; padding: 24px; text-align: center; margin-bottom: 24px;">
@@ -44,7 +107,7 @@ export async function createAndSendOTP(
            </div>
            <p style="color: #94a3b8; font-size: 13px;">This code expires in 10 minutes. If you didn't request this, please ignore this email.</p>
          </div>`
-      : `<div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px;">
+      : `<div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px; background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0;">
            <h2 style="color: #0f172a; margin-bottom: 8px;">Password Reset</h2>
            <p style="color: #64748b; margin-bottom: 24px;">Use the code below to reset your ClinicOCR password:</p>
            <div style="background: #f1f5f9; border-radius: 12px; padding: 24px; text-align: center; margin-bottom: 24px;">
@@ -53,23 +116,13 @@ export async function createAndSendOTP(
            <p style="color: #94a3b8; font-size: 13px;">This code expires in 10 minutes. If you didn't request this, please ignore this email.</p>
          </div>`;
 
-    const { error } = await resend.emails.send({
-      from: 'ClinicOCR <onboarding@resend.dev>',
+    const result = await sendEmail({
       to: email.toLowerCase().trim(),
       subject,
       html: body,
     });
 
-    if (error) {
-      console.error('Error sending OTP email:', error);
-      const isTestRestriction = error.message?.includes('You can only send testing emails to your own email address');
-      const errorMessage = isTestRestriction
-        ? `Testing Mode: Emails can currently only be sent to the registered Resend email (omjeesingh882@gmail.com). To send to any email, verify a custom domain at resend.com/domains.`
-        : (error.message || 'Failed to send verification email. Please try again.');
-      return { success: false, error: errorMessage };
-    }
-
-    return { success: true };
+    return result;
   } catch (error: any) {
     console.error('Error creating OTP:', error);
     return { success: false, error: error?.message || 'Failed to send verification code. Please try again.' };
