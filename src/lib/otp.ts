@@ -10,7 +10,35 @@ function generateOTP(): string {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
-// ─── Email Sender (Gmail SMTP with Resend Fallback) ──────────────────────────
+// ─── Pooled SMTP Transporter Singleton ──────────────────────────────────────
+
+let cachedTransporter: nodemailer.Transporter | null = null;
+
+function getTransporter() {
+  const smtpUser = process.env.SMTP_USER || 'omjeesingh882@gmail.com';
+  const smtpPass = process.env.SMTP_PASS;
+
+  if (!smtpPass) return null;
+
+  if (!cachedTransporter) {
+    cachedTransporter = nodemailer.createTransport({
+      host: 'smtp.gmail.com',
+      port: 465,
+      secure: true, // direct SSL is faster than STARTTLS port 587
+      pool: true,   // pooled connection prevents reconnect overhead
+      maxConnections: 5,
+      maxMessages: 100,
+      auth: {
+        user: smtpUser,
+        pass: smtpPass.replace(/\s+/g, ''),
+      },
+    });
+  }
+
+  return { transporter: cachedTransporter, smtpUser };
+}
+
+// ─── Email Sender ───────────────────────────────────────────────────────────
 
 async function sendEmail({
   to,
@@ -21,21 +49,12 @@ async function sendEmail({
   subject: string;
   html: string;
 }): Promise<{ success: boolean; error?: string }> {
-  const smtpUser = process.env.SMTP_USER || 'omjeesingh882@gmail.com';
-  const smtpPass = process.env.SMTP_PASS;
+  const smtp = getTransporter();
 
-  if (smtpUser && smtpPass) {
+  if (smtp) {
     try {
-      const transporter = nodemailer.createTransport({
-        service: 'gmail',
-        auth: {
-          user: smtpUser,
-          pass: smtpPass.replace(/\s+/g, ''),
-        },
-      });
-
-      await transporter.sendMail({
-        from: `"ClinicOCR" <${smtpUser}>`,
+      await smtp.transporter.sendMail({
+        from: `"ClinicOCR" <${smtp.smtpUser}>`,
         to,
         subject,
         html,
@@ -44,11 +63,13 @@ async function sendEmail({
       return { success: true };
     } catch (err: any) {
       console.error('SMTP sendMail error:', err);
+      // Reset cached transporter on error in case of stale socket
+      cachedTransporter = null;
       return { success: false, error: err?.message || 'Failed to send verification email.' };
     }
   }
 
-  // Fallback to Resend API if SMTP not configured
+  // Fallback to Resend API if SMTP is not configured
   if (process.env.RESEND_API_KEY) {
     try {
       const resend = new Resend(process.env.RESEND_API_KEY);
@@ -85,7 +106,7 @@ export async function createAndSendOTP(
     const expiresAt = new Date();
     expiresAt.setMinutes(expiresAt.getMinutes() + 10); // 10 minute expiry
 
-    // Store OTP in database
+    // 1. Store OTP in database immediately
     await db.insert(otpCodes).values({
       email: email.toLowerCase().trim(),
       code,
@@ -93,7 +114,7 @@ export async function createAndSendOTP(
       expiresAt,
     });
 
-    // Send OTP via email
+    // 2. Prepare email body
     const subject = type === 'signup'
       ? 'ClinicOCR - Verify Your Email'
       : 'ClinicOCR - Password Reset Code';
@@ -116,6 +137,7 @@ export async function createAndSendOTP(
            <p style="color: #94a3b8; font-size: 13px;">This code expires in 10 minutes. If you didn't request this, please ignore this email.</p>
          </div>`;
 
+    // 3. Dispatch email
     const result = await sendEmail({
       to: email.toLowerCase().trim(),
       subject,
